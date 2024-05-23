@@ -5,24 +5,34 @@ import { GoogleTokenResult } from './interfaces/googleTokenResult';
 import cors from 'cors'
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv'
+import bodyParser from 'body-parser'
 dotenv.config();
 
 const app = express();
 app.use(cors())
 // Middleware to parse JSON bodies
-app.use(express.json());
+// app.use(express.json());
 
 // Middleware to parse URL-encoded bodies
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.urlencoded({ limit: "50mb",
+ extended: true, parameterLimit: 500000 }))
+
 /////////////mongo db///////
 import mongoose from 'mongoose';
 
 const Schema = mongoose.Schema;
 
-const userSchema = new Schema({
-  _id:{
-    type:String
+const imageSchema = new Schema({
+  myFile: {
+    type: String,
   },
+});
+
+const userSchema = new Schema({
+  // _id:{
+  //   type:String
+  // },
   email: {
     type: String, 
     required: true,
@@ -40,9 +50,9 @@ const userSchema = new Schema({
       type: String,
       required: true
     },
-    image: [{
-      type: String
-    }],
+    image: {
+      type: [imageSchema],
+    },
     likes: {
       type: Number,
       default: 0
@@ -50,6 +60,9 @@ const userSchema = new Schema({
     views: {
       type: Number,
       default: 0
+    },
+    postedAt:{
+      type : Date
     }
   }],
   comments: [{
@@ -123,7 +136,103 @@ app.post("/", async(req, res)=>{
   
   
 })
+////////////////abowe is un authorizes requests/////////
+// app.use(verifyRequest);
+
+//////////authorized reuestes only///
+
+app.post("/post", verifyRequest, async(req, res)=>{
+  try {
+    const {content, image} = req.body;
+    console.log("payload from /post", req.payload)
+    const {id, email} = req.payload;
+    const result = await User.updateOne(
+      { _id: id },
+      {
+        $push: {
+          posts: {
+            content: content,
+            image: [image],
+            postedAt : new Date()
+          }
+        }
+      }
+    );
+    return res.status(201).json({message:"post added succesfully"})
+  } catch (error) {
+    console.error('Error adding post:', error);
+  }
+})
+
+app.get("/tweets", async(req, res)=>{
+  console.log("visited /tweets")
+  try{
+    const tweets = await User.find(
+      { },
+      {
+        _id : 1,
+        firstName: 1,
+        email: 1,
+        posts: 1,
+        profileImageURL: 1
+      }
+    );
+    
+    const transformedArrayOfTweets = tweets.flatMap(user => {
+      return user.posts.map(post => ({
+        userId: user._id,
+        firstName: user.firstName,
+        email: user.email,
+        profileImageURL: user.profileImageURL,
+        content: post.content,
+        image: post.image.map(img => ({ myFile: img.myFile })),
+        postId: post._id,
+        likes: post.likes,
+        views: post.views,
+        postedAt: post.postedAt
+      }));
+    });
+    
+    console.log("large tweets has sent")
+
+    return res.json(transformedArrayOfTweets);
+  }catch(err){
+    console.log("/tweets error", err);
+  }
+  
+})
 
 app.listen(8080, ()=>{
   console.log("server is running at port 8080");
 })
+
+function verifyRequest(req, res, next) {
+  console.log("verified request visited");
+
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    return res.status(401).json({ message: "unauthorized" });
+  }
+
+  const bearerToken = authHeader.split(' ');
+  const token = bearerToken[1];
+
+  console.log("token", token);
+
+  jwt.verify(token, process.env.UserJWTTokenSecret, async(err, payload) => {
+    if (err) {
+      if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({ message: "unauthorized" });
+      } else {
+        return res.status(401).json({ message: err.message });
+      }
+    }
+      req.payload = payload;
+      console.log("verify req payload", payload);
+      console.log("verify request payload", req.payload);
+  
+      next();
+    
+    
+  });
+}
