@@ -195,9 +195,47 @@ app.get("/tweets", async(req, res)=>{
     
     console.log("large tweets has sent")
 
-    return res.json(transformedArrayOfTweets);
+    return res.status(200).json(transformedArrayOfTweets);
   }catch(err){
     console.log("/tweets error", err);
+  }
+  
+})
+
+app.get("/user", async(req, res)=>{
+  try{
+  const email = req.query.id;
+  const user = await User.findOne({email:email});
+  if(!user){
+    return res.status(401).json({message:`user ${email} not found`})
+  }
+  const transformUserData = (user) => {
+    return {
+      userId: user._id,
+      firstName: user.firstName,
+      email: user.email,
+      profileImageURL: user.profileImageURL,
+      createdAt: user.createdAt,
+      followers: user.followers || [],
+      following: user.following || [],
+      posts: user.posts.map(post => ({
+        userId: user._id,
+        firstName: user.firstName,
+        email: user.email,
+        profileImageURL: user.profileImageURL,
+        content: post.content,
+        image: post.image.map(img => ({ myFile: img.myFile })),
+        postId: post._id,
+        likes: post.likes,
+        views: post.views,
+        postedAt: post.postedAt
+      }))
+    };
+  };
+  const transformedUser = transformUserData(user);
+  return res.status(200).json(transformedUser);
+  }catch(err){
+    console.log("/user error", err);
   }
   
 })
