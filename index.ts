@@ -14,7 +14,7 @@ app.use(cors())
 // app.use(express.json());
 
 // Middleware to parse URL-encoded bodies
-app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: "50mb",
  extended: true, parameterLimit: 500000 }))
 
@@ -29,10 +29,71 @@ const imageSchema = new Schema({
   },
 });
 
+const messageSchema = new Schema({
+  receiver: {
+    type: String,
+    required: true
+  },
+  sender: {
+    type: String,
+    required: true
+  },
+  text: {
+    type: String,
+    required: true
+  },
+  img: {
+    type: imageSchema,
+    required: false
+  },
+  time: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const postSchema = new Schema({
+  content: {
+    type: String,
+    required: true
+  },
+  image: {
+    type: [imageSchema],
+    required: false
+  },
+  comments: [{
+    sender:{
+      type:String,
+      ref:'User'
+    },
+    time :{
+      type:Date,
+      default :Date.now
+    },
+    msg:{
+      text:{
+        type:String,
+      },
+      img:{
+        type:imageSchema,
+        required: false
+      }
+    }
+  }],
+  likes: {
+    type: Number,
+    default: 0
+  },
+  views: {
+    type: Number,
+    default: 0
+  },
+  postedAt:{
+    type : Date
+  }
+});
+
 const userSchema = new Schema({
-  // _id:{
-  //   type:String
-  // },
   email: {
     type: String, 
     required: true,
@@ -45,37 +106,39 @@ const userSchema = new Schema({
   profileImageURL: {
     type: String
   },
-  posts: [{
-    content: {
-      type: String,
-      required: true
-    },
-    image: {
-      type: [imageSchema],
-    },
-    likes: {
-      type: Number,
-      default: 0
-    },
-    views: {
-      type: Number,
-      default: 0
-    },
-    postedAt:{
-      type : Date
-    }
-  }],
-  comments: [{
-    type: String
-  }],
+  coverPhoto:{
+    type:imageSchema,
+  },
+  posts:{
+    type:[postSchema],
+  },
+  bio:{
+    type:String,
+  },
+  location:{
+    type:String,
+  },
+  website:{
+    type:String,
+  },
+ 
   followers: [{
-    type: Schema.Types.ObjectId,
+    type: String,
     ref: 'User'
   }],
   following: [{
-    type: Schema.Types.ObjectId,
+    type: String,
     ref: 'User'
   }],
+  messages:{
+    receiver:{
+      type:String,
+      ref:'User'
+    },
+    msg:{
+      type:messageSchema,
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -116,7 +179,7 @@ app.post("/", async(req, res)=>{
       console.log("user created succesfully")
       
     }
-    const fUser = await User.findOne({email:data.email})
+    const fUser = await User.findOne({ email: data.email }).select('_id email firstName profileImageURL followers following createdAt role');
     if(!fUser){
       throw new Error("can't find the user");
     }
@@ -128,6 +191,7 @@ app.post("/", async(req, res)=>{
     const options = { expiresIn: '1d' };
     const newToken = jwt.sign(payload, secret, options);
     console.log("newTOken", newToken);
+
     res.status(200).json({token:newToken, user:fUser});
   }
   catch(err){
@@ -180,7 +244,7 @@ app.get("/tweets", async(req, res)=>{
     
     const transformedArrayOfTweets = tweets.flatMap(user => {
       return user.posts.map(post => ({
-        userId: user._id,
+        _id: user._id,
         firstName: user.firstName,
         email: user.email,
         profileImageURL: user.profileImageURL,
@@ -205,21 +269,27 @@ app.get("/tweets", async(req, res)=>{
 app.get("/user", async(req, res)=>{
   try{
   const email = req.query.id;
-  const user = await User.findOne({email:email});
+  const user = await User.findOne({ email: email })
+  .select('-messages -posts.comments')
+  .exec();
   if(!user){
     return res.status(401).json({message:`user ${email} not found`})
   }
   const transformUserData = (user) => {
     return {
-      userId: user._id,
+      _id: user._id,
       firstName: user.firstName,
       email: user.email,
       profileImageURL: user.profileImageURL,
+      coverPhoto:user.coverPhoto,
+      bio:user.bio,
+      location:user.location,
+      website:user.website,
       createdAt: user.createdAt,
       followers: user.followers || [],
       following: user.following || [],
       posts: user.posts.map(post => ({
-        userId: user._id,
+        _id: user._id,
         firstName: user.firstName,
         email: user.email,
         profileImageURL: user.profileImageURL,
@@ -233,11 +303,104 @@ app.get("/user", async(req, res)=>{
     };
   };
   const transformedUser = transformUserData(user);
+  console.log(transformedUser);
   return res.status(200).json(transformedUser);
   }catch(err){
     console.log("/user error", err);
   }
   
+})
+
+app.get("/following/user", async (req, res) => {
+  try {
+    const email = req.query.id;
+
+    const user = await User.findOne({ email: email })
+      .select('following followers firstName email')
+      .exec();
+
+    if (user) {
+      const hisDetail = {
+        firstName: user.firstName,
+        email : user.email
+      }
+      console.log('user from following', user)
+      const followingIds = user.following;
+
+      const followingDetails = await User.find({ email: { $in: followingIds } })
+        .select('email profileImageURL firstName bio')
+        .exec();
+
+      return res.status(200).json({followingDetails, hisDetail});
+    } else {
+      return res.status(404).json('User not found');
+    }
+  } catch (error) {
+    console.error('Error fetching following details:', error);
+    return res.status(500).json('Internal Server Error');
+  }
+});  
+
+app.get("/followers/user", async (req, res) => {
+  try {
+    const email = req.query.id;
+
+    const user = await User.findOne({ email: email })
+      .select('followers firstName email')
+      .exec();
+
+    if (user) {
+      const hisDetail = {
+        firstName: user.firstName,
+        email : user.email
+      }
+      console.log('user from followers', user)
+      const followersIds = user.followers;
+
+      const followersDetails = await User.find({ email: { $in: followersIds } })
+        .select('email profileImageURL firstName bio')
+        .exec();
+
+      return res.status(200).json({followersDetails, hisDetail});
+    } else {
+      return res.status(404).json('User not found');
+    }
+  } catch (error) {
+    console.error('Error fetching followers details:', error);
+    return res.status(500).json('Internal Server Error');
+  }
+});  
+
+
+
+
+app.post('/follow', async(req, res)=>{
+  try{
+    console.log("visited /follow")
+    const { follower , following} = req.body;
+    const followerUser = await User.findOneAndUpdate(
+      { email: follower },
+      { $addToSet: { following: following } }, // Add following to the user's following array if it's not already present
+      { new: true } // Return the updated document
+    );
+
+    const followingUser = await User.findOneAndUpdate(
+      { email: following },
+      { $addToSet: { followers: follower } }, // Add following to the user's following array if it's not already present
+      { new: true } // Return the updated document
+    );
+  
+    if (followerUser && followingUser) {
+      // Return only the following list
+      console.log(followingUser.following)
+      res.status(200).json({ follower: followerUser.following, following: followingUser.followers });
+    } else {
+      // User not found
+      res.status(404).json({ message: 'User not found.' });
+    }
+  }catch(err){
+
+  }
 })
 
 app.listen(8080, ()=>{
