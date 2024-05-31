@@ -15,8 +15,10 @@ app.use(cors())
 
 // Middleware to parse URL-encoded bodies
 app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: "50mb",
- extended: true, parameterLimit: 500000 }))
+app.use(bodyParser.urlencoded({
+  limit: "50mb",
+  extended: true, parameterLimit: 500000
+}))
 
 /////////////mongo db///////
 import mongoose from 'mongoose';
@@ -62,20 +64,20 @@ const postSchema = new Schema({
     required: false
   },
   comments: [{
-    sender:{
-      type:String,
-      ref:'User'
+    sender: {
+      type: String,
+      ref: 'User'
     },
-    time :{
-      type:Date,
-      default :Date.now
+    time: {
+      type: Date,
+      default: Date.now
     },
-    msg:{
-      text:{
-        type:String,
+    msg: {
+      text: {
+        type: String,
       },
-      img:{
-        type:imageSchema,
+      img: {
+        type: imageSchema,
         required: false
       }
     }
@@ -88,14 +90,14 @@ const postSchema = new Schema({
     type: Number,
     default: 0
   },
-  postedAt:{
-    type : Date
+  postedAt: {
+    type: Date
   }
 });
 
 const userSchema = new Schema({
   email: {
-    type: String, 
+    type: String,
     required: true,
     unique: true
   },
@@ -106,22 +108,22 @@ const userSchema = new Schema({
   profileImageURL: {
     type: String
   },
-  coverPhoto:{
-    type:imageSchema,
+  coverPhoto: {
+    type: imageSchema,
   },
-  posts:{
-    type:[postSchema],
+  posts: {
+    type: [postSchema],
   },
-  bio:{
-    type:String,
+  bio: {
+    type: String,
   },
-  location:{
-    type:String,
+  location: {
+    type: String,
   },
-  website:{
-    type:String,
+  website: {
+    type: String,
   },
- 
+
   followers: [{
     type: String,
     ref: 'User'
@@ -130,13 +132,13 @@ const userSchema = new Schema({
     type: String,
     ref: 'User'
   }],
-  messages:{
-    receiver:{
-      type:String,
-      ref:'User'
+  messages: {
+    receiver: {
+      type: String,
+      ref: 'User'
     },
-    msg:{
-      type:messageSchema,
+    msg: {
+      type: messageSchema,
     }
   },
   createdAt: {
@@ -144,43 +146,43 @@ const userSchema = new Schema({
     default: Date.now
   },
   role: {
-    type: String, 
+    type: String,
     default: 'user'
   }
 });
 const uri = process.env.mongoURL;
 mongoose.connect(uri)
-.then(()=>{
-  console.log("mongo db connected");
-}) 
+  .then(() => {
+    console.log("mongo db connected");
+  })
 
-const User = mongoose.model('User', userSchema); 
+const User = mongoose.model('User', userSchema);
 
 //////////mongo db END/////////
-app.post("/", async(req, res)=>{
-  try{
+app.post("/", async (req, res) => {
+  try {
     const token = req.body.token;
-  console.log(req.body);
-  const googleURL = new URL("https://oauth2.googleapis.com/tokeninfo")
+    console.log(req.body);
+    const googleURL = new URL("https://oauth2.googleapis.com/tokeninfo")
     googleURL.searchParams.set('id_token', token)
 
-    const {data} = await axios.get<GoogleTokenResult>(googleURL.toString(), {
-        responseType: 'json'
+    const { data } = await axios.get<GoogleTokenResult>(googleURL.toString(), {
+      responseType: 'json'
     })
     console.log(data);
     const findUser = await User.findOne({ email: data.email });
-    if(!findUser){
+    if (!findUser) {
       const newUser = new User({
         email: data.email,
         firstName: data.given_name,
-        profileImageURL : data.picture
+        profileImageURL: data.picture
       })
       const user = await newUser.save();
       console.log("user created succesfully")
-      
+
     }
     const fUser = await User.findOne({ email: data.email }).select('_id email firstName profileImageURL followers following createdAt role');
-    if(!fUser){
+    if (!fUser) {
       throw new Error("can't find the user");
     }
     const payload = {
@@ -192,24 +194,24 @@ app.post("/", async(req, res)=>{
     const newToken = jwt.sign(payload, secret, options);
     console.log("newTOken", newToken);
 
-    res.status(200).json({token:newToken, user:fUser});
+    res.status(200).json({ token: newToken, user: fUser });
   }
-  catch(err){
+  catch (err) {
     console.log(err);
   }
-  
-  
+
+
 })
 ////////////////abowe is un authorizes requests/////////
 // app.use(verifyRequest);
 
 //////////authorized reuestes only///
 
-app.post("/post", verifyRequest, async(req, res)=>{
+app.post("/post", verifyRequest, async (req, res) => {
   try {
-    const {content, image} = req.body;
+    const { content, image } = req.body;
     console.log("payload from /post", req.payload)
-    const {id, email} = req.payload;
+    const { id, email } = req.payload;
     const result = await User.updateOne(
       { _id: id },
       {
@@ -217,31 +219,31 @@ app.post("/post", verifyRequest, async(req, res)=>{
           posts: {
             content: content,
             image: [image],
-            postedAt : new Date()
+            postedAt: new Date()
           }
         }
       }
     );
-    return res.status(201).json({message:"post added succesfully"})
+    return res.status(201).json({ message: "post added succesfully" })
   } catch (error) {
     console.error('Error adding post:', error);
   }
 })
 
-app.get("/tweets", async(req, res)=>{
+app.get("/tweets", async (req, res) => {
   console.log("visited /tweets")
-  try{
+  try {
     const tweets = await User.find(
-      { },
+      {},
       {
-        _id : 1,
+        _id: 1,
         firstName: 1,
         email: 1,
         posts: 1,
         profileImageURL: 1
       }
     );
-    
+
     const transformedArrayOfTweets = tweets.flatMap(user => {
       return user.posts.map(post => ({
         _id: user._id,
@@ -256,59 +258,90 @@ app.get("/tweets", async(req, res)=>{
         postedAt: post.postedAt
       }));
     });
-    
+
     console.log("large tweets has sent")
 
     return res.status(200).json(transformedArrayOfTweets);
-  }catch(err){
+  } catch (err) {
     console.log("/tweets error", err);
   }
-  
+
 })
 
-app.get("/user", async(req, res)=>{
-  try{
-  const email = req.query.id;
-  const user = await User.findOne({ email: email })
-  .select('-messages -posts.comments')
-  .exec();
-  if(!user){
-    return res.status(401).json({message:`user ${email} not found`})
-  }
-  const transformUserData = (user) => {
-    return {
-      _id: user._id,
-      firstName: user.firstName,
-      email: user.email,
-      profileImageURL: user.profileImageURL,
-      coverPhoto:user.coverPhoto,
-      bio:user.bio,
-      location:user.location,
-      website:user.website,
-      createdAt: user.createdAt,
-      followers: user.followers || [],
-      following: user.following || [],
-      posts: user.posts.map(post => ({
+
+app.get("/user", async (req, res) => {
+  try {
+    const email = req.query.id;
+    const user = await User.findOne({ email: email })
+      .select('-messages -posts.comments')
+      .exec();
+    if (!user) {
+      return res.json({ message: 'user not found' })
+    }
+    const transformUserData = (user) => {
+      return {
         _id: user._id,
         firstName: user.firstName,
         email: user.email,
         profileImageURL: user.profileImageURL,
-        content: post.content,
-        image: post.image.map(img => ({ myFile: img.myFile })),
-        postId: post._id,
-        likes: post.likes,
-        views: post.views,
-        postedAt: post.postedAt
-      }))
+        coverPhoto: user.coverPhoto,
+        bio: user.bio,
+        location: user.location,
+        website: user.website,
+        createdAt: user.createdAt,
+        followers: user.followers || [],
+        following: user.following || [],
+        posts: user.posts.map(post => ({
+          _id: user._id,
+          firstName: user.firstName,
+          email: user.email,
+          profileImageURL: user.profileImageURL,
+          content: post.content,
+          image: post.image.map(img => ({ myFile: img.myFile })),
+          postId: post._id,
+          likes: post.likes,
+          views: post.views,
+          postedAt: post.postedAt
+        }))
+      };
     };
-  };
-  const transformedUser = transformUserData(user);
-  console.log(transformedUser);
-  return res.status(200).json(transformedUser);
-  }catch(err){
+
+    const transformedUser = transformUserData(user);
+    console.log(transformedUser);
+    return res.status(200).json(transformedUser);
+  } catch (err) {
     console.log("/user error", err);
   }
-  
+
+})
+
+app.post('/follow', async (req, res) => {
+  try {
+    console.log("visited /follow")
+    const { follower, following } = req.body;
+    const followerUser = await User.findOneAndUpdate(
+      { email: follower },
+      { $addToSet: { following: following } }, // Add following to the user's following array if it's not already present
+      { new: true } // Return the updated document
+    );
+
+    const followingUser = await User.findOneAndUpdate(
+      { email: following },
+      { $addToSet: { followers: follower } }, // Add following to the user's following array if it's not already present
+      { new: true } // Return the updated document
+    );
+
+    if (followerUser && followingUser) {
+      // Return only the following list
+      console.log(followingUser.following)
+      res.status(200).json({ follower: followerUser.following, following: followingUser.followers });
+    } else {
+      // User not found
+      return res.json({ message: 'user not found' })
+    }
+  } catch (err) {
+
+  }
 })
 
 app.get("/following/user", async (req, res) => {
@@ -322,7 +355,7 @@ app.get("/following/user", async (req, res) => {
     if (user) {
       const hisDetail = {
         firstName: user.firstName,
-        email : user.email
+        email: user.email
       }
       console.log('user from following', user)
       const followingIds = user.following;
@@ -331,15 +364,14 @@ app.get("/following/user", async (req, res) => {
         .select('email profileImageURL firstName bio')
         .exec();
 
-      return res.status(200).json({followingDetails, hisDetail});
-    } else {
-      return res.status(404).json('User not found');
+      return res.status(200).json({ followingDetails, hisDetail });
     }
+    return res.json({ message: 'user not found' })
   } catch (error) {
     console.error('Error fetching following details:', error);
     return res.status(500).json('Internal Server Error');
   }
-});  
+});
 
 app.get("/followers/user", async (req, res) => {
   try {
@@ -352,7 +384,7 @@ app.get("/followers/user", async (req, res) => {
     if (user) {
       const hisDetail = {
         firstName: user.firstName,
-        email : user.email
+        email: user.email
       }
       console.log('user from followers', user)
       const followersIds = user.followers;
@@ -361,49 +393,94 @@ app.get("/followers/user", async (req, res) => {
         .select('email profileImageURL firstName bio')
         .exec();
 
-      return res.status(200).json({followersDetails, hisDetail});
+      return res.status(200).json({ followersDetails, hisDetail });
     } else {
-      return res.status(404).json('User not found');
+      return res.json({ message: 'user not found' })
     }
   } catch (error) {
     console.error('Error fetching followers details:', error);
     return res.status(500).json('Internal Server Error');
   }
-});  
+});
 
+app.get('/followers_you_know/users', async (req, res) => {
+  try {
+    console.log('followers_you_know')
+    const profileUser = req.query.id1;
+    const searchUser = req.query.id2;
+    if (profileUser === searchUser) {
+      const user = await User.findOne({ email: profileUser })
+        .select('followers firstName email')
+        .exec();
+      if (user) {
+        const followersIds = user.following;
+        const hisDetail = {
+          firstName: user.firstName,
+          email: user.email
+        }
+        const followersDetails = await User.find({ email: { $in: followersIds } })
+          .select('email profileImageURL firstName bio')
+          .exec();
 
+        return res.status(201).json({ followersDetails, hisDetail });
+      }
 
-
-app.post('/follow', async(req, res)=>{
-  try{
-    console.log("visited /follow")
-    const { follower , following} = req.body;
-    const followerUser = await User.findOneAndUpdate(
-      { email: follower },
-      { $addToSet: { following: following } }, // Add following to the user's following array if it's not already present
-      { new: true } // Return the updated document
-    );
-
-    const followingUser = await User.findOneAndUpdate(
-      { email: following },
-      { $addToSet: { followers: follower } }, // Add following to the user's following array if it's not already present
-      { new: true } // Return the updated document
-    );
-  
-    if (followerUser && followingUser) {
-      // Return only the following list
-      console.log(followingUser.following)
-      res.status(200).json({ follower: followerUser.following, following: followingUser.followers });
-    } else {
-      // User not found
-      res.status(404).json({ message: 'User not found.' });
     }
-  }catch(err){
+    const user1 = await User.findOne({ email: profileUser })
+      .select('followers')
+      .exec()
 
+    const user2 = await User.findOne({ email: searchUser })
+      .select('followers firstName email')
+      .exec()
+
+    if (user1 && user2) {
+      const hisDetail = {
+        firstName: user2.firstName,
+        email: user2.email
+      }
+      const user1Followers = user1.followers;
+      const user2Followers = user2.followers;
+      const commonFollowers = user1Followers.filter(follower => user2Followers.includes(follower));
+
+      const followersDetails = await User.find({ email: { $in: commonFollowers } })
+        .select('email profileImageURL firstName bio')
+        .exec();
+
+      return res.status(200).json({ followersDetails, hisDetail })
+    }
+    return res.json({ message: 'user not found' })
+  } catch (err) {
+    console.log('internal server error', err);
+  }
+
+})
+
+app.get('/verified_followers/user', async (req, res) => {
+  try {
+    console.log('hit verified_followers')
+    const email = req.query.id;
+    const user = await User.findOne({ email })
+      .select('email firstName followers')
+      .exec()
+    if (user) {
+      const followersId = user.followers;
+      const hisDetail = {
+        firstName: user.firstName,
+        email: user.email
+      }
+      const followersDetails = await User.find({ email: { $in: followersId }, role: "verifiedUser" })
+      .select('email firstName profileImageURL bio')
+      .exec()
+      return res.status(200).json({hisDetail, followersDetails});
+    }
+    return res.json({ message: 'user not found' })
+  } catch (err) {
+    console.log('internal server error', err)
   }
 })
 
-app.listen(8080, ()=>{
+app.listen(8080, () => {
   console.log("server is running at port 8080");
 })
 
@@ -420,7 +497,7 @@ function verifyRequest(req, res, next) {
 
   console.log("token", token);
 
-  jwt.verify(token, process.env.UserJWTTokenSecret, async(err, payload) => {
+  jwt.verify(token, process.env.UserJWTTokenSecret, async (err, payload) => {
     if (err) {
       if (err.name === 'JsonWebTokenError') {
         return res.status(401).json({ message: "unauthorized" });
@@ -428,12 +505,12 @@ function verifyRequest(req, res, next) {
         return res.status(401).json({ message: err.message });
       }
     }
-      req.payload = payload;
-      console.log("verify req payload", payload);
-      console.log("verify request payload", req.payload);
-  
-      next();
-    
-    
+    req.payload = payload;
+    console.log("verify req payload", payload);
+    console.log("verify request payload", req.payload);
+
+    next();
+
+
   });
 }
